@@ -29,7 +29,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
-      CORS_ORIGIN: http://68.183.181.4
+      CORS_ORIGIN: https://lorebook.space,https://www.lorebook.space
       MONGO_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD is required}
     command:
       - /bin/sh
@@ -61,8 +61,6 @@ services:
   web:
     image: ghcr.io/comecloseandlisten/cursorhack220826/web:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
-    ports:
-      - "80:80"
     depends_on:
       api:
         condition: service_healthy
@@ -83,8 +81,40 @@ services:
       retries: 5
       start_period: 10s
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - frontend
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--spider",
+          "http://127.0.0.1/healthz",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
 volumes:
   mongo_data:
+  caddy_data:
+  caddy_config:
 
 networks:
   frontend:

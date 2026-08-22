@@ -1,0 +1,15 @@
+lorebook.space {
+	reverse_proxy web:80
+}
+
+www.lorebook.space {
+	redir https://lorebook.space{uri} permanent
+}
+
+http://lorebook.space, http://www.lorebook.space {
+	redir https://lorebook.space{uri} permanent
+}
+
+:80 {
+	reverse_proxy web:80
+}

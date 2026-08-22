@@ -115,7 +115,7 @@ jobs:
           printf '%s\n' "$DROPLET_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Copy production Compose file
+      - name: Copy production deployment files
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           DROPLET_USER: ${{ secrets.DROPLET_USER }}
@@ -127,7 +127,8 @@ jobs:
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o StrictHostKeyChecking=yes \
             compose.prod.yml \
-            "${DROPLET_USER}@${DROPLET_HOST}:${DEPLOY_PATH}/compose.prod.yml"
+            Caddyfile \
+            "${DROPLET_USER}@${DROPLET_HOST}:${DEPLOY_PATH}/"
 
       - name: Pull and deploy images
         env:
