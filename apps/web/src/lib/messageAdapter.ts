@@ -23,8 +23,9 @@ function displayEntries(
     const id = index === 0 ? message.id : `${message.id}-${index + 1}`;
     const phrase = kind === "note" || kind === "voice" ? { body } : { caption: body };
     const image = item?.mime.startsWith("image/") ? item.url : undefined;
+    const video = item?.mime === "video/mp4" ? item.url : undefined;
 
-    return { id, kind, author, time, source, image, ...phrase };
+    return { id, kind, author, time, source, image, video, ...phrase };
   });
 }
 

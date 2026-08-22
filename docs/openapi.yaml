@@ -411,9 +411,20 @@ paths:
           required: true
           schema:
             type: string
+        - name: Range
+          in: header
+          required: false
+          description: Байтовый диапазон для HTML5 video/audio (например bytes=0-).
+          schema:
+            type: string
       responses:
         "200":
-          description: Байты файла с исходным Content-Type.
+          description: Весь файл. Content-Length и Accept-Ranges: bytes.
+          headers:
+            Accept-Ranges:
+              schema: { type: string, example: bytes }
+            Content-Length:
+              schema: { type: integer }
           content:
             video/mp4:
               schema: { type: string, format: binary }
@@ -425,6 +436,32 @@ paths:
               schema: { type: string, format: binary }
             image/gif:
               schema: { type: string, format: binary }
+        "206":
+          description: Кусок файла по Range. Content-Range + Content-Length диапазона.
+          headers:
+            Accept-Ranges:
+              schema: { type: string, example: bytes }
+            Content-Range:
+              schema: { type: string, example: bytes 0-1023/366145 }
+            Content-Length:
+              schema: { type: integer }
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+            audio/mpeg:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/gif:
+              schema: { type: string, format: binary }
+        "416":
+          description: Range вне файла.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
 

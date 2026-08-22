@@ -74,4 +74,72 @@ describe("App", () => {
     expect(screen.getAllByRole("button", { name: /Open (photo|video) from/ })).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Back" })).toBeInTheDocument();
   });
+
+  it("opens a live video in the player", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo) => {
+        const url = String(input);
+        if (url.includes("/canvases")) {
+          return new Response(
+            JSON.stringify({
+              items: [
+                {
+                  id: "canvas_default",
+                  title: "Default",
+                  ownerId: "system",
+                  createdAt: "2026-08-22T00:00:00Z",
+                },
+              ],
+            }),
+          );
+        }
+
+        if (url.includes("/messages")) {
+          return new Response(
+            JSON.stringify({
+              items: [
+                {
+                  id: "msg_video",
+                  text: { body: "grandma recipe" },
+                  revealAnimation: null,
+                  media: [
+                    {
+                      mime: "video/mp4",
+                      url: "https://example.com/recipe.mp4",
+                    },
+                  ],
+                  dateTimeSend: "2026-08-22T08:31:45.425Z",
+                  canvasId: "canvas_default",
+                  dateTimeReveal: null,
+                  senderId: "tg:1",
+                  parentMessageId: null,
+                  tag: null,
+                  channel: "dm",
+                },
+              ],
+            }),
+          );
+        }
+
+        return new Response("not found", { status: 404 });
+      }),
+    );
+
+    const user = userEvent.setup();
+    window.history.replaceState({}, "", "/");
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Open photo gallery" })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "Open photo gallery" }));
+    await user.click(screen.getByRole("button", { name: "Open video from tg:1" }));
+
+    expect(screen.getByRole("dialog", { name: "Video viewer" })).toBeInTheDocument();
+    expect(document.querySelector("video")).toHaveAttribute(
+      "src",
+      "https://example.com/recipe.mp4",
+    );
+  });
 });

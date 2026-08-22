@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -15,6 +16,7 @@ import type { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { BotGuard } from '../auth/bot.guard';
 import { ApiError } from '../http/api-error';
+import { parseByteRange, rangeHeader } from './byte-range';
 import {
   MAX_MEDIA_BYTES,
   MediaService,
@@ -51,10 +53,45 @@ export class MediaController {
   @Get(':mediaId')
   async getMedia(
     @Param('mediaId') mediaId: string,
+    @Headers('range') range: string | undefined,
     @Res() response: Response,
   ): Promise<void> {
-    const file = await this.mediaService.open(mediaId);
-    response.setHeader('Content-Type', file.mime);
-    file.stream.pipe(response);
+    try {
+      const file = await this.mediaService.lookup(mediaId);
+      const parsed = parseByteRange(rangeHeader(range), file.length);
+
+      if (parsed.kind === 'unsatisfiable') {
+        response.setHeader('Accept-Ranges', 'bytes');
+        response.setHeader('Content-Range', `bytes */${file.length}`);
+        response.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE).end();
+        return;
+      }
+
+      const start = parsed.kind === 'partial' ? parsed.start : 0;
+      const end = parsed.kind === 'partial' ? parsed.end : file.length - 1;
+
+      response.setHeader('Content-Type', file.mime);
+      response.setHeader('Accept-Ranges', 'bytes');
+      response.setHeader('Content-Length', String(end - start + 1));
+
+      if (parsed.kind === 'partial') {
+        response.status(HttpStatus.PARTIAL_CONTENT);
+        response.setHeader(
+          'Content-Range',
+          `bytes ${start}-${end}/${file.length}`,
+        );
+      }
+
+      this.mediaService
+        .download(file.id, parsed.kind === 'partial' ? { start, end } : undefined)
+        .pipe(response);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        response.status(error.getStatus()).json(error.getResponse());
+        return;
+      }
+
+      throw error;
+    }
   }
 }

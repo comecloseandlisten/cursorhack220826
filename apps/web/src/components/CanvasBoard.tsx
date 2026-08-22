@@ -1,5 +1,12 @@
 import { Play } from "lucide-react";
-import { useMemo, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+} from "react";
 
 import { mediaEntries } from "../lib/playlist";
 import type { DayEntry } from "../types/canvas";
@@ -32,40 +39,39 @@ function paletteFor(id: string): CSSProperties {
 function MediaArtwork({
   entry,
   eager = false,
-  expanded = false,
 }: {
   entry: DayEntry;
   eager?: boolean;
-  expanded?: boolean;
 }) {
   const [imageFailed, setImageFailed] = useState(false);
   const label = entry.caption ?? `Memory from ${entry.author}`;
 
   return (
-    <figure
-      className={`media-surface relative m-0 overflow-hidden rounded-[10px] ${
-        expanded ? "max-h-full max-w-full bg-white/50" : "bg-white/30"
-      }`}
-    >
-      {entry.image && !imageFailed ? (
+    <figure className="media-surface relative m-0 overflow-hidden rounded-[10px] bg-white/30">
+      {entry.kind === "video" && entry.video ? (
+        <video
+          src={entry.video}
+          muted
+          playsInline
+          preload="metadata"
+          className="pointer-events-none block aspect-[5/4] w-full object-cover"
+          aria-label={label}
+        />
+      ) : entry.image && !imageFailed ? (
         <img
           src={entry.image}
           alt={label}
-          width={expanded ? 1600 : 1200}
-          height={expanded ? 1280 : 960}
+          width={1200}
+          height={960}
           loading={eager ? "eager" : "lazy"}
           onError={() => setImageFailed(true)}
-          className={
-            expanded
-              ? "block max-h-[calc(100dvh-8rem)] max-w-[calc(100vw-2rem)] object-contain sm:max-w-[calc(100vw-4rem)]"
-              : "block aspect-[5/4] w-full object-cover"
-          }
+          className="block aspect-[5/4] w-full object-cover"
         />
       ) : (
         <div
           role="img"
           aria-label={label}
-          className={`fallback-art ${expanded ? "h-[min(72dvh,760px)] w-[min(88vw,950px)]" : "aspect-[5/4] w-full"}`}
+          className="fallback-art aspect-[5/4] w-full"
           style={paletteFor(entry.id)}
         >
           <span>{label}</span>
@@ -129,6 +135,23 @@ export function CanvasBoard({
   onClosePhoto,
 }: CanvasBoardProps) {
   const media = useMemo(() => mediaEntries(entries), [entries]);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    return () => {
+      if (video) {
+        video.pause();
+        video.currentTime = 0;
+      }
+    };
+  }, [opened?.id]);
+
+  function closeFromBackdrop(event: MouseEvent<HTMLDivElement>) {
+    if (event.target === event.currentTarget) {
+      onClosePhoto();
+    }
+  }
 
   return (
     <main
@@ -162,14 +185,37 @@ export function CanvasBoard({
       )}
 
       {opened ? (
-        <button
-          type="button"
-          onClick={onClosePhoto}
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={opened.kind === "video" ? "Video viewer" : "Photo viewer"}
+          onClick={closeFromBackdrop}
           className="fixed inset-0 z-40 flex cursor-zoom-out items-center justify-center border-0 bg-slate-50/95 p-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-6px] focus-visible:outline-ink sm:p-8"
-          aria-label="Close photo"
         >
-          <MediaArtwork entry={opened} eager expanded />
-        </button>
+          {opened.kind === "video" && opened.video ? (
+            <video
+              ref={videoRef}
+              src={opened.video}
+              controls
+              autoPlay
+              playsInline
+              className="max-h-[calc(100dvh-8rem)] max-w-[calc(100vw-2rem)] cursor-default rounded-[10px] bg-black object-contain sm:max-w-[calc(100vw-4rem)]"
+              aria-label={opened.caption ?? `Video from ${opened.author}`}
+            />
+          ) : opened.image ? (
+            <img
+              src={opened.image}
+              alt={opened.caption ?? `Memory from ${opened.author}`}
+              width={1600}
+              height={1280}
+              className="pointer-events-none max-h-[calc(100dvh-8rem)] max-w-[calc(100vw-2rem)] rounded-[10px] object-contain sm:max-w-[calc(100vw-4rem)]"
+            />
+          ) : (
+            <div className="pointer-events-none">
+              <MediaArtwork entry={opened} eager />
+            </div>
+          )}
+        </div>
       ) : null}
     </main>
   );

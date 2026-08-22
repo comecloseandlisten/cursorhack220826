@@ -73,34 +73,41 @@ export class MediaService implements OnModuleInit {
     };
   }
 
-  async open(mediaId: string): Promise<{
+  async lookup(mediaId: string): Promise<{
+    id: ObjectId;
     mime: string;
-    stream: ReturnType<GridFSBucket['openDownloadStream']>;
+    length: number;
   }> {
     if (!ObjectId.isValid(mediaId)) {
       throw mediaNotFound();
     }
 
-    const objectId = new ObjectId(mediaId);
-    const files = await this.getBucket()
-      .find({ _id: objectId })
-      .limit(1)
-      .toArray();
+    const id = new ObjectId(mediaId);
+    const files = await this.getBucket().find({ _id: id }).limit(1).toArray();
     const file = files[0];
 
     if (!file) {
       throw mediaNotFound();
     }
 
-    const mime =
-      typeof file.metadata?.['mime'] === 'string'
-        ? file.metadata['mime']
-        : 'application/octet-stream';
-
     return {
-      mime,
-      stream: this.getBucket().openDownloadStream(objectId),
+      id,
+      mime:
+        typeof file.metadata?.['mime'] === 'string'
+          ? file.metadata['mime']
+          : 'application/octet-stream',
+      length: file.length,
     };
+  }
+
+  download(
+    id: ObjectId,
+    range?: { start: number; end: number },
+  ): ReturnType<GridFSBucket['openDownloadStream']> {
+    return this.getBucket().openDownloadStream(
+      id,
+      range ? { start: range.start, end: range.end + 1 } : undefined,
+    );
   }
 
   private getBucket(): GridFSBucket {
