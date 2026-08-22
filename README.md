@@ -16,7 +16,7 @@ cd cursorhack220826
 | # | Имя | GitHub | Роль | Фокус |
 |---|-----|--------|------|--------|
 | 1 | *заполнить* | [@comecloseandlisten](https://github.com/comecloseandlisten) | Owner / координация | — |
-| 2 | *заполнить* | `@…` | *роль* | — |
+| 2 | Alexey Vishnevskiy | [@vushnevskuu](https://github.com/vushnevskuu) | Designer | UI/UX, визуал |
 | 3 | *заполнить* | `@…` | *роль* | — |
 | 4 | *заполнить* | `@…` | *роль* | — |
 
@@ -48,7 +48,8 @@ cd cursorhack220826
 
 - [x] Репозиторий создан
 - [x] Базовые файлы для команды из 4
-- [ ] Добавлены 3 collaborator’а на GitHub
-- [ ] Заполнены имена и роли в TEAM.md
+- [x] Designer добавлен: [@vushnevskuu](https://github.com/vushnevskuu) (`vushnevskuu@gmail.com`)
+- [ ] Добавлены ещё 2 collaborator’а на GitHub
+- [ ] Заполнены остальные имена и роли в TEAM.md
 - [ ] Выбран стек и добавлен скелет приложения
 - [ ] Защита ветки `main` (PR required)

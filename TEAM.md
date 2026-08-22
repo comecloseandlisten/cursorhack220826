@@ -7,7 +7,7 @@
 | # | Имя | Telegram / контакт | GitHub | Роль | Зона ответственности |
 |---|-----|-------------------|--------|------|----------------------|
 | 1 | | | comecloseandlisten | Owner | Координация, merge в `main`, деплой |
-| 2 | | | | | |
+| 2 | Alexey Vishnevskiy | vushnevskuu@gmail.com | [vushnevskuu](https://github.com/vushnevskuu) | Designer | UI/UX, визуал, дизайн-система, макеты |
 | 3 | | | | | |
 | 4 | | | | | |
 
@@ -18,15 +18,16 @@
 | Роль | Что делает |
 |------|------------|
 | **Owner** | Ветки, PR merge, доступы, дедлайны |
-| **Frontend** | UI, клиент, UX-мелочи |
+| **Designer** | UI/UX, визуал, макеты, дизайн-система |
+| **Frontend** | UI-код, клиент |
 | **Backend / API** | Сервер, данные, интеграции |
 | **Product / Demo** | Сценарий демо, README, питч, запись |
 
 ## Доступы (чеклист owner’а)
 
-На GitHub → **Settings → Collaborators** добавьте трёх участников с правом **Write**.
+На GitHub → **Settings → Collaborators** добавьте участников с правом **Write**.
 
-- [ ] Участник 2 приглашён и принял invite
+- [x] Designer (`vushnevskuu`) приглашён (письмо: vushnevskuu@gmail.com)
 - [ ] Участник 3 приглашён и принял invite
 - [ ] Участник 4 приглашён и принял invite
 - [ ] У всех есть клон репо и рабочий Cursor
