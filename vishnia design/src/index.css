@@ -1,0 +1,188 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #162035;
+  --color-muted: #526078;
+  --color-canvas: #ffffff;
+  --color-line: rgba(22, 32, 53, 0.12);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bottom-dock {
+  right: calc(1rem + env(safe-area-inset-right));
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  left: calc(1rem + env(safe-area-inset-left));
+}
+
+.ambient {
+  position: relative;
+  isolation: isolate;
+  background: #ffffff;
+}
+
+.glass {
+  background: rgba(241, 245, 249, 0.78);
+  border: 1px solid rgba(22, 32, 53, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 12px 34px rgba(22, 32, 53, 0.12);
+  backdrop-filter: blur(24px) saturate(145%);
+  -webkit-backdrop-filter: blur(24px) saturate(145%);
+}
+
+.glass-btn {
+  transition:
+    background 220ms ease,
+    box-shadow 220ms ease,
+    opacity 220ms ease;
+}
+
+.glass-btn:hover {
+  background: rgba(226, 232, 240, 0.92);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 14px 36px rgba(22, 32, 53, 0.16);
+}
+
+.media-surface {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 24px 58px rgba(22, 32, 53, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.media-surface::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.26), transparent 32%);
+  content: "";
+}
+
+.glass-scroll {
+  scrollbar-width: none;
+  mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+}
+
+.wheel-track {
+  width: min(400px, calc(100vw - 1.5rem));
+  height: 170px;
+}
+
+.wheel-capsule {
+  --wheel-x: 0px;
+  --wheel-y: -52px;
+  --wheel-scale: 1;
+  --wheel-rotate: 0deg;
+  --wheel-blur: 0px;
+  transform-origin: center bottom;
+  transform: perspective(700px)
+    translate3d(calc(-50% + var(--wheel-x)), var(--wheel-y), 0)
+    scale(var(--wheel-scale)) rotateX(var(--wheel-rotate));
+  filter: blur(var(--wheel-blur));
+  opacity: 1;
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 200ms ease,
+    filter 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+  will-change: transform;
+}
+
+.wheel-capsule[data-depth="1"] {
+  --wheel-y: -76px;
+  --wheel-scale: 0.9;
+  --wheel-rotate: 8deg;
+  --wheel-blur: 0.25px;
+  opacity: 0.7;
+}
+
+.wheel-capsule[data-depth="2"] {
+  --wheel-y: -100px;
+  --wheel-scale: 0.82;
+  --wheel-rotate: 15deg;
+  --wheel-blur: 0.5px;
+  opacity: 0.48;
+}
+
+.wheel-capsule[data-depth="3"] {
+  --wheel-y: -124px;
+  --wheel-scale: 0.74;
+  --wheel-rotate: 22deg;
+  --wheel-blur: 0.8px;
+  opacity: 0.28;
+}
+
+.wheel-capsule:hover {
+  opacity: 0.9;
+}
+
+.wheel-capsule[data-selected="true"],
+.wheel-capsule[data-playing="true"] {
+  border-color: rgba(22, 32, 53, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 16px 38px rgba(22, 32, 53, 0.16);
+}
+
+@keyframes gallery-reveal {
+  from {
+    transform: translateY(28px) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.gallery-item {
+  animation: gallery-reveal 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (max-width: 639px) {
+  .wheel-track {
+    height: 170px;
+  }
+}
+
+@media (min-width: 640px) {
+  .bottom-dock {
+    right: calc(1.5rem + env(safe-area-inset-right));
+    bottom: calc(1.5rem + env(safe-area-inset-bottom));
+    left: calc(1.5rem + env(safe-area-inset-left));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
