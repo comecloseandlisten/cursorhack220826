@@ -154,7 +154,7 @@ jobs:
               && test -f .env \
               && IMAGE_TAG='$IMAGE_TAG' docker compose --env-file .env -f compose.prod.yml pull \
               && IMAGE_TAG='$IMAGE_TAG' docker compose --env-file .env -f compose.prod.yml up -d --remove-orphans \
-              && curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-connrefused http://127.0.0.1/api/health >/dev/null"
+              && curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors http://127.0.0.1/api/health >/dev/null"
 
       - name: Remove SSH material
         if: always()
