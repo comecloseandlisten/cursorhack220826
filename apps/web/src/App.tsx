@@ -1,128 +1,234 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-type HealthState =
-  | { phase: "loading" }
-  | { phase: "ready"; api: string; database: string }
-  | { phase: "error"; message: string };
+import { CalendarDock } from "./components/CalendarDock";
+import { CanvasBoard, type CanvasLayout } from "./components/CanvasBoard";
+import { MessageWheel } from "./components/MessageWheel";
+import { useNarration } from "./hooks/useNarration";
+import { eachDay, shiftDay } from "./lib/dates";
+import { adaptMessagesToDays } from "./lib/messageAdapter";
+import { mediaEntries, phraseEntries } from "./lib/playlist";
+import { mockMessages, senderNames } from "./mocks/messages";
+import type { DayEntry } from "./types/canvas";
 
-type HealthPayload = {
-  status?: unknown;
-  database?: unknown;
-  mongo?: unknown;
-};
+const CALENDAR_FROM = "2026-08-10";
+const TODAY = "2026-08-22";
+const initialDays = adaptMessagesToDays(mockMessages, senderNames);
 
-const HEALTHY_VALUES = new Set(["ok", "healthy", "connected", "ready", "up"]);
-
-function readStatus(value: unknown, fallback: string): string {
-  if (typeof value === "string" && value.trim()) {
-    return value.trim();
-  }
-
-  if (value && typeof value === "object" && "status" in value) {
-    return readStatus((value as { status?: unknown }).status, fallback);
-  }
-
-  return fallback;
-}
-
-function formatStatus(status: string): string {
-  const words = status.replaceAll(/[_-]+/g, " ");
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-function StatusItem({ label, value }: { label: string; value: string }) {
-  const isHealthy = HEALTHY_VALUES.has(value.toLowerCase());
-
-  return (
-    <div className="status-item">
-      <dt>{label}</dt>
-      <dd>
-        <span className={`status-dot ${isHealthy ? "healthy" : "warning"}`} aria-hidden="true" />
-        {formatStatus(value)}
-      </dd>
-    </div>
-  );
+function initialDay(): string {
+  const queryDay = new URLSearchParams(window.location.search).get("day");
+  return queryDay && queryDay >= CALENDAR_FROM && queryDay <= TODAY ? queryDay : TODAY;
 }
 
 export function App() {
-  const [attempt, setAttempt] = useState(0);
-  const [health, setHealth] = useState<HealthState>({ phase: "loading" });
+  const [selected, setSelected] = useState(initialDay);
+  const [layout, setLayout] = useState<CanvasLayout>("pile");
+  const [openedMediaId, setOpenedMediaId] = useState<string | null>(null);
+  const [wheelOpen, setWheelOpen] = useState(false);
+  const [readIdsByDay, setReadIdsByDay] = useState<Record<string, string[]>>({});
+  const calendarDays = useMemo(() => eachDay(CALENDAR_FROM, TODAY), []);
+  const counts = useMemo(
+    () =>
+      Object.fromEntries(initialDays.map((day) => [day.date, day.entries.length])) as Record<
+        string,
+        number
+      >,
+    [],
+  );
+  const current = initialDays.find((day) => day.date === selected);
+  const entries = current?.entries ?? [];
+  const media = useMemo(() => mediaEntries(entries), [entries]);
+  const phrases = useMemo(() => phraseEntries(entries), [entries]);
+  const openedMedia = media.find((entry) => entry.id === openedMediaId) ?? null;
+  const depth = openedMedia ? 2 : layout === "grid" ? 1 : 0;
+  const { playing, activeId, stop, playOne } = useNarration(selected);
+  const readIds = readIdsByDay[selected] ?? [];
+  const unreadCount = phrases.filter((entry) => !readIds.includes(entry.id)).length;
+
+  function playMessage(entry: DayEntry) {
+    setReadIdsByDay((previous) => {
+      const dayReadIds = previous[selected] ?? [];
+      if (dayReadIds.includes(entry.id)) return previous;
+      return { ...previous, [selected]: [...dayReadIds, entry.id] };
+    });
+    void playOne(entry);
+  }
+
+  function pushNavigation(nextDepth: 1 | 2, photoId?: string) {
+    window.history.pushState(
+      { frameDepth: nextDepth, photoId: photoId ?? null, wheelOpen: false },
+      "",
+      window.location.href,
+    );
+  }
+
+  function openGallery() {
+    setWheelOpen(false);
+    setOpenedMediaId(null);
+    setLayout("grid");
+    pushNavigation(1);
+  }
+
+  function openPhoto(entry: DayEntry) {
+    setWheelOpen(false);
+    setOpenedMediaId(entry.id);
+    setLayout("grid");
+    pushNavigation(2, entry.id);
+  }
+
+  const closeOneLevel = useCallback(() => {
+    if (wheelOpen || depth > 0) window.history.back();
+  }, [wheelOpen, depth]);
+
+  function changeWheelOpen(nextOpen: boolean) {
+    if (nextOpen) {
+      setWheelOpen(true);
+      window.history.pushState(
+        { frameDepth: depth, photoId: openedMediaId, wheelOpen: true },
+        "",
+        window.location.href,
+      );
+      return;
+    }
+    if (window.history.state?.wheelOpen) {
+      window.history.back();
+    } else {
+      setWheelOpen(false);
+    }
+  }
 
   useEffect(() => {
-    const controller = new AbortController();
+    window.history.replaceState(
+      { frameDepth: 0, photoId: null, wheelOpen: false },
+      "",
+      window.location.href,
+    );
 
-    async function checkHealth() {
-      setHealth({ phase: "loading" });
-
-      try {
-        const response = await fetch("/api/health", {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        const payload = (await response.json()) as HealthPayload;
-
-        if (!response.ok && typeof payload.status !== "string") {
-          throw new Error(`Health check returned HTTP ${response.status}`);
-        }
-
-        setHealth({
-          phase: "ready",
-          api: readStatus(payload.status, "reachable"),
-          database: readStatus(payload.database ?? payload.mongo, "unknown"),
-        });
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        setHealth({
-          phase: "error",
-          message: error instanceof Error ? error.message : "Health check failed",
-        });
-      }
+    function restoreNavigation(event: PopStateEvent) {
+      const nextDepth =
+        event.state?.frameDepth === 2 ? 2 : event.state?.frameDepth === 1 ? 1 : 0;
+      setWheelOpen(Boolean(event.state?.wheelOpen));
+      setLayout(nextDepth === 0 ? "pile" : "grid");
+      setOpenedMediaId(nextDepth === 2 ? (event.state?.photoId ?? null) : null);
     }
 
-    void checkHealth();
-    return () => controller.abort();
-  }, [attempt]);
+    window.addEventListener("popstate", restoreNavigation);
+    return () => window.removeEventListener("popstate", restoreNavigation);
+  }, []);
+
+  const selectDay = useCallback(
+    (iso: string) => {
+      if (iso < CALENDAR_FROM || iso > TODAY) return;
+      stop();
+      setSelected(iso);
+      const url = new URL(window.location.href);
+      url.searchParams.set("day", iso);
+      window.history.replaceState(
+        { frameDepth: 0, photoId: null, wheelOpen: false },
+        "",
+        url,
+      );
+      setWheelOpen(false);
+      setOpenedMediaId(null);
+      setLayout("pile");
+    },
+    [stop],
+  );
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape" && (wheelOpen || depth > 0)) {
+        event.preventDefault();
+        closeOneLevel();
+        return;
+      }
+      if (depth > 0 || wheelOpen) return;
+      if (event.key === "ArrowLeft") selectDay(shiftDay(selected, -1));
+      if (event.key === "ArrowRight") selectDay(shiftDay(selected, 1));
+    }
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected, selectDay, depth, wheelOpen, closeOneLevel]);
 
   return (
-    <main>
-      <section className="health-panel" aria-labelledby="health-title">
-        <header>
-          <p className="eyebrow">Runtime check</p>
-          <h1 id="health-title">System health</h1>
-          <p className="summary">Live connectivity results from the application health endpoint.</p>
-        </header>
+    <div className="ambient relative h-dvh overflow-hidden text-ink">
+      <a
+        href="#family-canvas"
+        className="glass sr-only z-[60] rounded-full px-4 py-3 text-sm focus:not-sr-only focus:absolute focus:top-4 focus:left-4"
+      >
+        Skip to family memories
+      </a>
 
-        <div className="health-result" aria-live="polite">
-          {health.phase === "loading" && (
-            <div className="loading-state" role="status">
-              <span className="loading-mark" aria-hidden="true" />
-              Checking API and database…
-            </div>
-          )}
+      <div className="absolute inset-0">
+        {media.length > 0 ? (
+          <CanvasBoard
+            entries={entries}
+            layout={layout}
+            opened={openedMedia}
+            onExpandPile={openGallery}
+            onOpenPhoto={openPhoto}
+            onClosePhoto={closeOneLevel}
+          />
+        ) : phrases.length > 0 ? (
+          <div className="flex h-full items-center justify-center pb-24">
+            <MessageWheel
+              key={selected}
+              prominent
+              open={wheelOpen}
+              onOpenChange={changeWheelOpen}
+              entries={phrases}
+              activeId={activeId}
+              playing={playing}
+              unreadCount={unreadCount}
+              readIds={readIds}
+              onPlay={playMessage}
+              onStop={stop}
+            />
+          </div>
+        ) : (
+          <p className="flex h-full items-center justify-center px-6 pb-24 text-center text-sm text-muted">
+            Nothing shared this day.
+          </p>
+        )}
+      </div>
 
-          {health.phase === "ready" && (
-            <dl className="status-list">
-              <StatusItem label="API" value={health.api} />
-              <StatusItem label="Database" value={health.database} />
-            </dl>
-          )}
-
-          {health.phase === "error" && (
-            <div className="error-state" role="alert">
-              <div>
-                <strong>Health check unavailable</strong>
-                <p>{health.message}</p>
-              </div>
-              <button type="button" onClick={() => setAttempt((current) => current + 1)}>
-                Retry
-              </button>
-            </div>
+      <div className="bottom-dock pointer-events-none absolute z-50 flex justify-center">
+        <div className="pointer-events-auto flex flex-col items-center gap-3">
+          {media.length > 0 && phrases.length > 0 ? (
+            <MessageWheel
+              key={selected}
+              open={wheelOpen}
+              onOpenChange={changeWheelOpen}
+              entries={phrases}
+              activeId={activeId}
+              playing={playing}
+              unreadCount={unreadCount}
+              readIds={readIds}
+              onPlay={playMessage}
+              onStop={stop}
+            />
+          ) : null}
+          {depth > 0 ? (
+            <button
+              type="button"
+              onClick={closeOneLevel}
+              data-wheel-back
+              className="glass glass-btn flex h-14 cursor-pointer items-center rounded-full px-7 text-sm font-medium text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              aria-label="Back"
+            >
+              Back
+            </button>
+          ) : (
+            <CalendarDock
+              days={calendarDays}
+              selected={selected}
+              counts={counts}
+              onSelect={selectDay}
+              onShift={(delta) => selectDay(shiftDay(selected, delta))}
+            />
           )}
         </div>
-      </section>
-    </main>
+      </div>
+    </div>
   );
 }
