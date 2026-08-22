@@ -1,13 +1,11 @@
 ---
-description: Правила совместной работы 4 человек в репозитории хакатона
+description: Max value, min tokens. No process fluff.
 alwaysApply: true
 ---
 
-# Команда из 4
+# Density
 
-- Репозиторий общий: не ломай `main`, работай через feature-ветки и PR.
-- Перед правками смотри `TEAM.md` — учитывай зоны ответственности.
-- Не коммить и не пушь без явной просьбы пользователя.
-- Секреты и `.env` не коммитить; для шаблонов — только `.env.example`.
-- Пока нет выбранного стека/приложения — не генерируй лишний скелет проекта.
-- Документацию команды держи короткой и актуальной (README, TEAM, CONTRIBUTING).
+- Ship product, not docs/checklists/status boards.
+- Short diffs. No unsolicited markdown, templates, or ceremony.
+- Don't invent process the team didn't ask for.
+- Secrets stay out of git.
