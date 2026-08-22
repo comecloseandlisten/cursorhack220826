@@ -163,6 +163,52 @@ button {
   animation: gallery-reveal 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@keyframes incoming-media-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes incoming-media-surface-reveal {
+  from {
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes unread-badge-reveal {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.incoming-media-item {
+  animation: incoming-media-reveal 420ms ease-out both;
+}
+
+.incoming-media-item .media-surface {
+  animation: incoming-media-surface-reveal 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.unread-badge-reveal {
+  animation: unread-badge-reveal 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: center;
+}
+
 @media (max-width: 639px) {
   .wheel-track {
     height: 170px;

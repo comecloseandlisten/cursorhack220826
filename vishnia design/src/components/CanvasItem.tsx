@@ -7,6 +7,7 @@ type CanvasItemProps = {
   entry: DayEntry
   piled: boolean
   index: number
+  incoming?: boolean
   onOpen?: () => void
 }
 
@@ -14,13 +15,23 @@ export function CanvasItem({
   entry,
   piled,
   index,
+  incoming = false,
   onOpen,
 }: CanvasItemProps) {
   const [imageFailed, setImageFailed] = useState(false)
   const content = (
     <>
       <figure className="media-surface relative overflow-hidden rounded-[8px] bg-white/30">
-        {entry.image && !imageFailed ? (
+        {entry.kind === 'video' && entry.video ? (
+          <video
+            src={entry.video}
+            muted
+            playsInline
+            preload="metadata"
+            className="pointer-events-none block aspect-[5/4] w-full object-cover"
+            aria-label={entry.caption ?? `Video from ${entry.author}`}
+          />
+        ) : entry.image && !imageFailed ? (
           <img
             src={entry.image}
             alt={entry.caption ?? entry.author}
@@ -47,7 +58,7 @@ export function CanvasItem({
   if (piled) {
     return (
       <div
-        className="absolute inset-0 w-full"
+        className={`absolute inset-0 w-full ${incoming ? 'incoming-media-item' : ''}`}
         style={{
           zIndex: index + 1,
           transform: `rotate(${-8 + index * 4}deg)`,
@@ -62,7 +73,9 @@ export function CanvasItem({
     <button
       type="button"
       onClick={onOpen}
-      className="gallery-item w-full cursor-zoom-in border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+      className={`gallery-item w-full cursor-zoom-in border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
+        incoming ? 'incoming-media-item' : ''
+      }`}
       style={{ animationDelay: `${index * 45}ms` }}
       aria-label={`Open ${entry.kind === 'video' ? 'video' : 'photo'} from ${entry.author}`}
     >

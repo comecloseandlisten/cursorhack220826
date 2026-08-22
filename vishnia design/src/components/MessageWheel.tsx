@@ -21,6 +21,7 @@ type MessageWheelProps = {
   unreadCount: number
   readIds: string[]
   onPlay: (entry: DayEntry) => void
+  onOpenUnread?: () => void
   onStop: () => void
 }
 
@@ -34,6 +35,7 @@ export function MessageWheel({
   unreadCount,
   readIds,
   onPlay,
+  onOpenUnread,
   onStop,
 }: MessageWheelProps) {
   const [selected, setSelected] = useState(0)
@@ -150,6 +152,10 @@ export function MessageWheel({
   }
 
   function toggle() {
+    if (!open && unreadCount > 0 && onOpenUnread) {
+      onOpenUnread()
+      return
+    }
     if (!open) {
       const firstUnread = entries.findIndex((entry) => !readIds.includes(entry.id))
       if (firstUnread >= 0) {
@@ -235,7 +241,7 @@ export function MessageWheel({
       <button
         type="button"
         onClick={toggle}
-        disabled={entries.length === 0}
+        disabled={entries.length === 0 && unreadCount === 0}
         className={`glass glass-btn relative z-30 flex cursor-pointer items-center justify-center rounded-full text-ink disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
           prominent ? 'size-24' : 'size-14 sm:size-16'
         }`}
@@ -252,7 +258,7 @@ export function MessageWheel({
         {unreadCount > 0 ? (
           <span
             aria-hidden="true"
-            className="absolute -top-1 -right-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] leading-none font-semibold text-white shadow-sm"
+            className="unread-badge-reveal absolute -top-1 -right-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] leading-none font-semibold text-white shadow-sm"
           >
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>

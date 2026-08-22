@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { CalendarDock } from './components/CalendarDock'
 import { CanvasBoard, type CanvasLayout } from './components/CanvasBoard'
@@ -10,6 +10,29 @@ import { mediaEntries, phraseEntries } from './lib/playlist'
 import type { DayEntry } from './types'
 
 const CALENDAR_FROM = '2026-08-10'
+const LOCAL_DEMO_DELAY_MS = 5_000
+const LOCAL_DEMO_VIDEO: DayEntry = {
+  id: 'local-demo-family-video',
+  kind: 'video',
+  author: 'Family',
+  time: '15:18',
+  source: 'direct',
+  duration: '0:04',
+  video: '/videos/family-message.mp4',
+  caption: 'A new family video',
+}
+
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false
+  }
+
+  return Boolean(
+    target.closest(
+      'input, textarea, select, button, a[href], audio, video, [contenteditable]:not([contenteditable="false"]), [role="button"], [role="dialog"], [role="textbox"], [role="combobox"], [role="listbox"], [role="slider"], [aria-modal="true"]',
+    ),
+  )
+}
 
 function initialDay(): string {
   const queryDay = new URLSearchParams(window.location.search).get('day')
@@ -22,23 +45,31 @@ export default function App() {
   const [openedMediaId, setOpenedMediaId] = useState<string | null>(null)
   const [wheelOpen, setWheelOpen] = useState(false)
   const [readIdsByDay, setReadIdsByDay] = useState<Record<string, string[]>>({})
+  const [incomingVideoDay, setIncomingVideoDay] = useState<string | null>(null)
+  const [incomingVideoUnread, setIncomingVideoUnread] = useState(false)
+  const selectedRef = useRef(selected)
+  const demoTriggeredRef = useRef(false)
 
   const calendarDays = useMemo(() => eachDay(CALENDAR_FROM, TODAY), [])
   const counts = useMemo(() => {
     return initialDays.reduce<Record<string, number>>((acc, day) => {
-      acc[day.date] = day.entries.length
+      acc[day.date] = day.entries.length + (day.date === incomingVideoDay ? 1 : 0)
       return acc
     }, {})
-  }, [])
+  }, [incomingVideoDay])
 
   const current = initialDays.find((day) => day.date === selected)
-  const media = useMemo(() => mediaEntries(current?.entries ?? []), [current?.entries])
+  const currentEntries = useMemo(() => {
+    const entries = current?.entries ?? []
+    return selected === incomingVideoDay ? [...entries, LOCAL_DEMO_VIDEO] : entries
+  }, [current?.entries, incomingVideoDay, selected])
+  const media = useMemo(() => mediaEntries(currentEntries), [currentEntries])
   const openedMedia = media.find((entry) => entry.id === openedMediaId) ?? null
   const depth = openedMedia ? 2 : layout === 'grid' ? 1 : 0
-  const phrases = useMemo(() => phraseEntries(current?.entries ?? []), [current?.entries])
+  const phrases = useMemo(() => phraseEntries(currentEntries), [currentEntries])
   const { playing, activeId, stop, playOne } = useNarration(phrases, selected)
   const readIds = readIdsByDay[selected] ?? []
-  const unreadCount = phrases.filter((entry) => !readIds.includes(entry.id)).length
+  const unreadCount = incomingVideoUnread ? 1 : 0
 
   function playMessage(entry: DayEntry) {
     setReadIdsByDay((previous) => {
@@ -70,7 +101,20 @@ export default function App() {
     setWheelOpen(false)
     setOpenedMediaId(entry.id)
     setLayout('grid')
+    if (entry.id === LOCAL_DEMO_VIDEO.id) {
+      setIncomingVideoUnread(false)
+    }
     pushNavigation(2, entry.id)
+  }
+
+  function openIncomingVideo() {
+    if (!incomingVideoDay) {
+      return
+    }
+    if (selected !== incomingVideoDay) {
+      selectDay(incomingVideoDay)
+    }
+    openPhoto(LOCAL_DEMO_VIDEO)
   }
 
   const closeOneLevel = useCallback(() => {
@@ -133,6 +177,48 @@ export default function App() {
   }, [stop])
 
   useEffect(() => {
+    selectedRef.current = selected
+  }, [selected])
+
+  useEffect(() => {
+    const localDemoEnabled =
+      import.meta.env.DEV &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+
+    if (!localDemoEnabled) {
+      return
+    }
+
+    let deliveryTimer: number | null = null
+
+    function triggerLocalDemo(event: KeyboardEvent) {
+      if (
+        event.key !== ' ' ||
+        event.repeat ||
+        demoTriggeredRef.current ||
+        document.querySelector('[aria-modal="true"]') !== null ||
+        isInteractiveTarget(event.target)
+      ) {
+        return
+      }
+
+      demoTriggeredRef.current = true
+      deliveryTimer = window.setTimeout(() => {
+        setIncomingVideoDay(selectedRef.current)
+        setIncomingVideoUnread(true)
+      }, LOCAL_DEMO_DELAY_MS)
+    }
+
+    window.addEventListener('keydown', triggerLocalDemo)
+    return () => {
+      window.removeEventListener('keydown', triggerLocalDemo)
+      if (deliveryTimer !== null) {
+        window.clearTimeout(deliveryTimer)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === 'Escape' && (wheelOpen || depth > 0)) {
         event.preventDefault()
@@ -165,9 +251,10 @@ export default function App() {
       <div className="absolute inset-0">
         {media.length > 0 ? (
           <CanvasBoard
-            entries={current?.entries ?? []}
+            entries={currentEntries}
             layout={layout}
             opened={openedMedia}
+            incomingEntryId={incomingVideoDay === selected ? LOCAL_DEMO_VIDEO.id : null}
             onExpandPile={openGallery}
             onOpenPhoto={openPhoto}
             onClosePhoto={closeOneLevel}
@@ -185,6 +272,7 @@ export default function App() {
               unreadCount={unreadCount}
               readIds={readIds}
               onPlay={playMessage}
+              onOpenUnread={openIncomingVideo}
               onStop={stop}
             />
           </div>
@@ -197,7 +285,7 @@ export default function App() {
 
       <div className="bottom-dock pointer-events-none absolute z-50 flex justify-center">
         <div className="pointer-events-auto flex flex-col items-center gap-3">
-          {media.length > 0 && phrases.length > 0 ? (
+          {media.length > 0 && (phrases.length > 0 || unreadCount > 0) ? (
             <MessageWheel
               key={selected}
               open={wheelOpen}
@@ -208,6 +296,7 @@ export default function App() {
               unreadCount={unreadCount}
               readIds={readIds}
               onPlay={playMessage}
+              onOpenUnread={openIncomingVideo}
               onStop={stop}
             />
           ) : null}

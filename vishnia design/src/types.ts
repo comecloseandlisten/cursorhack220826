@@ -10,6 +10,7 @@ export type DayEntry = {
   caption?: string
   body?: string
   image?: string
+  video?: string
   duration?: string
 }
 
