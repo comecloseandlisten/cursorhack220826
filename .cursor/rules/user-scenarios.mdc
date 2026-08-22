@@ -9,5 +9,6 @@ Read before product / UI / bot / API / tests / demo. Do not invent extra flows o
 
 - Scenarios: `docs/user-scenarios.md` (six flows)
 - Message contract: `docs/message-contract.md`
+- API spec: `docs/openapi.yaml` (validated; change it together with code)
 
 `parentMessageId` is explicit (Obsidian-style): no selection → root; reply / comment → selected message. Same canvas only. No cycles.

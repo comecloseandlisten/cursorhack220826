@@ -1,0 +1,600 @@
+# =============================================================================
+# OpenAPI-спека digest-канваса.
+#
+# Источники правды (НЕ выдумывать поля и флоу сверх них):
+#   - docs/user-scenarios.md   — шесть сценариев US-1..US-6
+#   - docs/message-contract.md — контракт Message
+#
+# Карта сценариев → эндпоинты:
+#   US-1 (веб)            → POST /messages
+#   US-2 (чат + @bot)     → POST /ingest/chat   (дергает бот, не фронт)
+#   US-3 (личка боту)     → POST /ingest/dm     (дергает бот, не фронт)
+#   US-4 (коммент)        → POST /messages с parentMessageId
+#   US-5 (реакция)        → PUT / DELETE /messages/{id}/reactions/{emoji}
+#   US-6 (фильтры)        → GET /messages?dateFrom&dateTo&text&imageObject
+# =============================================================================
+openapi: 3.0.3
+
+info:
+  title: Digest Canvas API
+  version: 0.1.0
+  license:
+    name: MIT
+    url: https://opensource.org/license/mit
+  description: |
+    Digest — лента сообщений, собранных из трёх каналов: веб, групповой чат
+    (через тег бота), личка бота. Сообщения живут на канвасах, треды — как
+    вложенные блоки в Obsidian (parentMessageId выбирается ЯВНО, не угадывается).
+
+    Кто ходит куда:
+    - фронт → `/messages*` (кука/сессия пользователя);
+    - бот  → `/ingest/*` (свой токен, см. securitySchemes.botToken).
+
+servers:
+  - url: /api/v1
+    description: Относительный префикс — фронт и бот ходят на тот же хост.
+
+# Дефолт для всех ручек — сессия юзера. /ingest/* перекрывают на botToken.
+security:
+  - session: []
+
+tags:
+  - name: messages
+    description: Digest, создание сообщений и комментов, фильтры (US-1, US-4, US-6)
+  - name: reactions
+    description: Реакции emoji (US-5)
+  - name: ingest
+    description: Входящие от бота — чат и личка (US-2, US-3)
+
+paths:
+  # ===========================================================================
+  # /messages — сердце всего: лента + создание
+  # ===========================================================================
+  /messages:
+    get:
+      tags: [messages]
+      operationId: listMessages
+      summary: Лента digest с фильтрами (US-6)
+      description: |
+        Все фильтры объединяются по AND. Пустые фильтры = вся лента канваса.
+        Сброс фильтров на фронте = просто запрос без query-параметров.
+
+        Отложенные сообщения (dateTimeReveal в будущем): всем, кроме автора,
+        отдаём "маску" — text/media вырезаны, остальные поля на месте, чтобы
+        фронт мог показать плейсхолдер "откроется в …".
+      parameters:
+        - name: canvasId
+          in: query
+          required: true
+          description: Лента всегда в рамках одного канваса.
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          description: Нижняя граница по dateTimeSend, включительно.
+          schema:
+            type: string
+            format: date-time
+        - name: dateTo
+          in: query
+          description: Верхняя граница по dateTimeSend, включительно.
+          schema:
+            type: string
+            format: date-time
+        - name: text
+          in: query
+          description: |
+            Подстрока без учёта регистра. Ищем в теле сообщения И в его
+            комментах (детях) — если совпал комментарий, в выдачу попадает
+            родитель (см. US-6).
+          schema:
+            type: string
+        - name: imageObject
+          in: query
+          description: |
+            Фильтр "объект на картинке": «кот», «чек», «паспорт»…
+            Нет картинок у сообщения → мимо. Как искать — дело бэка
+            (vision-модель/теги), контракт фиксирует только поведение.
+          schema:
+            type: string
+        - name: tag
+          in: query
+          description: Точное совпадение с полем tag.
+          schema:
+            type: string
+        - name: parentMessageId
+          in: query
+          description: |
+            Отдать только детей этого сообщения (раскрытие треда).
+            Без параметра — вся лента, и корни, и дети.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Отфильтрованная лента, сортировка по dateTimeSend по убыванию.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+    post:
+      tags: [messages]
+      operationId: createMessage
+      summary: Создать сообщение из веба (US-1) или коммент (US-4)
+      description: |
+        Один эндпоинт на оба сценария — коммент это то же Message,
+        просто с заполненным parentMessageId (см. message-contract.md).
+
+        Сервер сам проставляет id, dateTimeSend, senderId (из сессии) —
+        клиент их НЕ шлёт, пришлёт — получит 400.
+
+        Правила parentMessageId (Obsidian-style, никакой магии):
+        - null / нет поля  → корень канваса;
+        - id карточки      → ребёнок ровно той карточки, что выбрал юзер;
+        - родитель обязан существовать и жить на том же canvasId;
+        - циклы невозможны by construction (родитель уже существует).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageCreate"
+      responses:
+        "201":
+          description: Создано. Возвращаем полный объект — фронт дорисовывает ленту без refetch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          description: |
+            Пустое тело (нет ни text, ни media), кривой mime, dateTimeReveal
+            в прошлом, лишние серверные поля — всё сюда.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: parentMessageId или canvasId не существует (или родитель с другого канваса).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /messages/{messageId}:
+    get:
+      tags: [messages]
+      operationId: getMessage
+      summary: Одно сообщение (карточка)
+      description: Реакции и число детей едут внутри Message — отдельных запросов не надо.
+      parameters:
+        - $ref: "#/components/parameters/MessageId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ===========================================================================
+  # US-5. Реакции. Идемпотентные PUT/DELETE вместо "toggle":
+  # повторный PUT ничего не меняет, повторный DELETE тоже — фронту и боту
+  # не нужно знать текущее состояние, чтобы жать кнопку.
+  # ===========================================================================
+  /messages/{messageId}/reactions/{emoji}:
+    put:
+      tags: [reactions]
+      operationId: addReaction
+      summary: Поставить реакцию (US-5)
+      description: |
+        Одна реакция одного типа от одного юзера на одно сообщение —
+        уникальность (messageId, senderId, emoji) держит бэк.
+        Реакция из чата и из веба — одна и та же модель, дублей нет.
+      parameters:
+        - $ref: "#/components/parameters/MessageId"
+        - $ref: "#/components/parameters/Emoji"
+      responses:
+        "204":
+          description: Стоит (уже стояла — тоже 204, идемпотентно).
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [reactions]
+      operationId: removeReaction
+      summary: Снять реакцию (US-5)
+      description: Повторное нажатие той же реакции = снять. Счётчик в UI обновляется.
+      parameters:
+        - $ref: "#/components/parameters/MessageId"
+        - $ref: "#/components/parameters/Emoji"
+      responses:
+        "204":
+          description: Снята (или её и не было — идемпотентно).
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ===========================================================================
+  # /ingest/* — только для бота (botToken). Фронт сюда не ходит.
+  # ===========================================================================
+  /ingest/chat:
+    post:
+      tags: [ingest]
+      operationId: ingestChatMessage
+      summary: Забрать сообщение из группового чата (US-2)
+      description: |
+        Бот дергает это, когда его тегнули (@bot …) или сделали reply на него.
+        БЕЗ тега бот сюда не ходит вообще — фильтрация на стороне бота.
+
+        Дедупликация: (chatId, sourceMessageId) уникальны. Повторный тег того
+        же сообщения → 200 с уже существующим Message, а не дубликат (см. US-2).
+      security:
+        - botToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatIngest"
+      responses:
+        "201":
+          description: Новое сообщение в digest, канал = chat.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "200":
+          description: Уже собирали (повторный тег) — возвращаем существующее.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ingest/dm:
+    post:
+      tags: [ingest]
+      operationId: ingestDirectMessage
+      summary: Забрать сообщение из лички бота (US-3)
+      description: |
+        Любое непустое входящее в личку → в digest, канал = dm.
+        Команды бота (/start и прочее) сюда НЕ шлём — бот отсеивает их сам,
+        в digest они не попадают (см. US-3).
+      security:
+        - botToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DmIngest"
+      responses:
+        "201":
+          description: В digest. Бот после этого подтверждает приём юзеру.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+# =============================================================================
+# Компоненты
+# =============================================================================
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: sid
+      description: Сессионная кука юзера. Из неё сервер берёт senderId.
+    botToken:
+      type: http
+      scheme: bearer
+      description: Токен бота для /ingest/*. Пользовательские ручки живут на сессии.
+
+  parameters:
+    MessageId:
+      name: messageId
+      in: path
+      required: true
+      schema:
+        type: string
+    Emoji:
+      name: emoji
+      in: path
+      required: true
+      description: Сам символ, url-encoded (например %F0%9F%94%A5 для 🔥).
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: Невалидный запрос.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Сообщение не найдено.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Нет/протух botToken.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    # -------------------------------------------------------------------------
+    # Message — 1:1 с docs/message-contract.md. Поля со * из контракта здесь
+    # просто необязательные. Плюс read-only довесок: channel, reactions,
+    # childCount — их считает сервер, в контракте создания их нет.
+    # -------------------------------------------------------------------------
+    Message:
+      type: object
+      required: [id, canvasId, dateTimeSend, senderId, channel]
+      properties:
+        id:
+          type: string
+          readOnly: true
+          description: Выдаёт система. Клиент при создании не шлёт.
+        text:
+          $ref: "#/components/schemas/TextBlock"
+        revealAnimation:
+          type: string
+          nullable: true
+          description: Имя анимации появления (1.2*). Нет значения = без анимации.
+        media:
+          type: array
+          description: Вложения (2). Пустой массив = нет медиа.
+          items:
+            $ref: "#/components/schemas/Media"
+        dateTimeSend:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Время отправки (3). Ставит сервер. НЕ путать с reveal.
+        canvasId:
+          type: string
+          description: Канвас-владелец (4). Перенос на другой канвас — отдельная операция, не PATCH этого поля.
+        dateTimeReveal:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Отложенный показ (5). null/нет = показать сразу.
+            Должно быть >= dateTimeSend. До наступления все, кроме автора,
+            видят маску без text/media.
+        senderId:
+          type: string
+          readOnly: true
+          description: Автор (6). Сервер берёт из сессии или из ingest-пейлоада.
+        parentMessageId:
+          type: string
+          nullable: true
+          description: |
+            Треды как в Obsidian (7). null = корень канваса.
+            Выбирается явно юзером (reply/коммент), никогда не угадывается.
+            Родитель — тот же canvasId, циклы запрещены.
+            Удалили родителя → дети становятся корнями, с канваса не пропадают.
+        canvasPosition:
+          $ref: "#/components/schemas/CanvasPosition"
+        tag:
+          type: string
+          nullable: true
+          description: Один тег (9). Пусто = без тега.
+        channel:
+          type: string
+          readOnly: true
+          enum: [web, chat, dm]
+          description: Откуда пришло. web=US-1, chat=US-2, dm=US-3. Ставит сервер.
+        reactions:
+          type: array
+          readOnly: true
+          description: Агрегат по US-5, чтобы фронт не ходил отдельно.
+          items:
+            $ref: "#/components/schemas/ReactionCount"
+        childCount:
+          type: integer
+          readOnly: true
+          description: Сколько детей (комментов/тредов). Для бейджа на карточке.
+
+    # Тело создания из веба (US-1/US-4): всё то же, минус серверные поля.
+    MessageCreate:
+      type: object
+      description: |
+        Клиент шлёт всё, кроме id / dateTimeSend / senderId — их ставит сервер.
+        Пустое тело запрещено — нужен text и/или хотя бы один media,
+        что и выражает anyOf ниже.
+      anyOf:
+        - required: [text]
+        - required: [media]
+      required: [canvasId]
+      properties:
+        text:
+          $ref: "#/components/schemas/TextBlock"
+        revealAnimation:
+          type: string
+        media:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Media"
+        canvasId:
+          type: string
+        dateTimeReveal:
+          type: string
+          format: date-time
+          description: Для отложенных. В прошлом → 400.
+        parentMessageId:
+          type: string
+          description: Заполнено = это коммент/reply (US-4). Пусто = корень.
+        canvasPosition:
+          $ref: "#/components/schemas/CanvasPosition"
+        tag:
+          type: string
+
+    TextBlock:
+      type: object
+      description: Текст (1) + опциональный стиль (1.1*). Стиль без body не бывает.
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          description: Трим на бэке. Пустая строка после трима = текста нет.
+        fontType:
+          type: string
+          description: Шрифт (например serif / sans / mono).
+        design:
+          type: string
+          description: Начертание/оформление (italic, bold, handwritten…).
+        size:
+          type: number
+          description: Кегль в px.
+
+    Media:
+      type: object
+      required: [mime, url]
+      properties:
+        mime:
+          type: string
+          # Ровно пять типов из контракта, ничего сверх — иначе 400.
+          enum:
+            - video/mp4
+            - audio/mpeg
+            - image/jpeg
+            - image/png
+            - image/gif
+        url:
+          type: string
+          format: uri
+          description: Куда загружено. Аплоад файлов — отдельная ручка/стораж, вне этой спеки.
+
+    CanvasPosition:
+      type: object
+      description: |
+        Координаты карточки (8*). Не прислали — сервер кладёт рядом с родителем
+        или в дефолтную точку. Задано явно = ручной якорь: карточка стоит где
+        поставили и не едет за родителем.
+      required: [x, y]
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+
+    ReactionCount:
+      type: object
+      description: Одна строчка агрегата реакций на карточке.
+      required: [emoji, count, reactedByMe]
+      properties:
+        emoji:
+          type: string
+        count:
+          type: integer
+          minimum: 1
+        reactedByMe:
+          type: boolean
+          description: Ставил ли текущий юзер — чтобы подсветить кнопку.
+
+    # --- ingest-пейлоады -----------------------------------------------------
+    ChatIngest:
+      type: object
+      description: |
+        US-2. Бот уже проверил, что его тегнули. Автор digest-сообщения =
+        автор исходной реплики (authorId), taggedById — кто тегнул (видно
+        в карточке "кто собрал").
+      required: [chatId, sourceMessageId, authorId, taggedById, canvasId]
+      anyOf:
+        - required: [text]
+        - required: [media]
+      properties:
+        chatId:
+          type: string
+          description: Внешний id чата (телега/слак/что угодно).
+        chatTitle:
+          type: string
+          description: Название чата — показываем в карточке "откуда".
+        sourceMessageId:
+          type: string
+          description: Id исходного сообщения в чате. Пара (chatId, sourceMessageId) = ключ дедупа.
+        authorId:
+          type: string
+          description: Автор исходной реплики. Станет senderId.
+        taggedById:
+          type: string
+          description: Кто позвал бота.
+        canvasId:
+          type: string
+          description: На какой канвас собирает этот чат (маппинг чат→канвас настраивается у бота).
+        text:
+          $ref: "#/components/schemas/TextBlock"
+        media:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Media"
+        sourceUrl:
+          type: string
+          format: uri
+          description: Ссылка на исходное сообщение — "открыть в чате".
+
+    DmIngest:
+      type: object
+      description: |
+        US-3. Личка боту. Команды (/start и т.п.) бот сюда не пересылает.
+        parentMessageId возможен, если юзер в личке делает reply на карточку,
+        которую бот ему присылал (та же Obsidian-логика выбора родителя).
+      required: [authorId, sourceMessageId, canvasId]
+      anyOf:
+        - required: [text]
+        - required: [media]
+      properties:
+        authorId:
+          type: string
+          description: Отправитель. Станет senderId.
+        sourceMessageId:
+          type: string
+          description: Id сообщения в личке — тот же дедуп, что и в чате.
+        canvasId:
+          type: string
+        text:
+          $ref: "#/components/schemas/TextBlock"
+        media:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Media"
+        parentMessageId:
+          type: string
+          description: Reply на карточку из бота → коммент к ней (US-4 из лички).
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Машиночитаемый код (empty_body, bad_mime, parent_not_found, reveal_in_past…).
+        message:
+          type: string
+          description: Человекочитаемо, можно показать в тосте.
