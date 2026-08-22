@@ -1,0 +1,13 @@
+---
+description: Canonical user scenarios and message contract (web, chat @bot digest, DM, comment, reaction, filters; message fields including parentMessageId threads). Use when building product, UI, bot, API, tests, or demo.
+alwaysApply: true
+---
+
+# Product sources of truth
+
+Read before product / UI / bot / API / tests / demo. Do not invent extra flows or message fields.
+
+- Scenarios: `docs/user-scenarios.md` (six flows)
+- Message contract: `docs/message-contract.md`
+
+`parentMessageId` is explicit (Obsidian-style): no selection → root; reply / comment → selected message. Same canvas only. No cycles.
