@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1
+
+FROM node:22-alpine AS base
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+RUN corepack enable && corepack prepare pnpm@11.22.0 --activate
+
+WORKDIR /app
+
+FROM base AS dependencies
+
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+RUN pnpm fetch --frozen-lockfile
+
+COPY . .
+RUN pnpm install --offline --frozen-lockfile
+
+FROM dependencies AS build
+
+RUN pnpm --filter @cursorhack/bot build \
+    && pnpm --filter @cursorhack/bot deploy --prod --legacy /prod/bot
+
+FROM node:22-alpine AS runtime
+
+ENV NODE_ENV=production
+ENV HEALTH_PORT=3001
+
+RUN apk add --no-cache curl
+
+WORKDIR /app
+
+COPY --from=build --chown=node:node /prod/bot ./
+
+USER node
+
+EXPOSE 3001
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=5 \
+  CMD curl --fail --silent --show-error http://127.0.0.1:3001/ >/dev/null || exit 1
+
+CMD ["node", "dist/main.js"]

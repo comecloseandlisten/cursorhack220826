@@ -12,6 +12,8 @@
 #   US-6 (фильтры)        → GET /messages?dateFrom&dateTo&text&imageObject
 #   треды (контракт)      → POST /messages с parentMessageId
 #   канвасы               → /canvases  (сообщение всегда на одном canvasId)
+#   инфраструктура бота   → GET /ingest/source (reply → parentMessageId),
+#                           /media (телеграмные файлы живут у нас, не по их временным ссылкам)
 # =============================================================================
 openapi: 3.0.3
 
@@ -318,6 +320,113 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /ingest/source:
+    get:
+      tags: [ingest]
+      operationId: findMessageBySource
+      summary: Найти digest-сообщение по исходнику в мессенджере
+      description: |
+        Бот резолвит reply: юзер ответил на сообщение, которое уже собрано, —
+        бот по (sourceId, sourceMessageId) узнаёт id карточки и шлёт ingest
+        с parentMessageId. Для группового чата sourceId = chatId,
+        для лички = authorId (там дедуп по автору).
+      security:
+        - botToken: []
+      parameters:
+        - name: sourceId
+          in: query
+          required: true
+          description: chatId группового чата или authorId лички.
+          schema:
+            type: string
+        - name: sourceMessageId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Найдено.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Исходник ещё не собран в digest — reply уходит корнем.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /media:
+    post:
+      tags: [ingest]
+      operationId: uploadMedia
+      summary: Загрузить файл вложения (бот)
+      description: |
+        Телеграмные file-ссылки протухают — бот скачивает файл (лимит getFile
+        20MB) и заливает сюда. В ответе постоянный url для Media.url.
+      security:
+        - botToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Сохранено.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Media"
+        "400":
+          description: Нет файла, недопустимый mime или файл больше 20MB.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /media/{mediaId}:
+    get:
+      tags: [ingest]
+      operationId: getMedia
+      summary: Отдать сохранённый файл
+      description: Публичная раздача — url из Media.url открывается из карточки без сессии.
+      security: []
+      parameters:
+        - name: mediaId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Байты файла с исходным Content-Type.
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+            audio/mpeg:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/gif:
+              schema: { type: string, format: binary }
+        "404":
+          $ref: "#/components/responses/NotFound"
 
 components:
   securitySchemes:

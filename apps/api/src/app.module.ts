@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { validateEnvironment } from './config/environment';
 import { CanvasesModule } from './canvases/canvases.module';
 import { HealthModule } from './health/health.module';
+import { MediaModule } from './media/media.module';
 import { MessagesModule } from './messages/messages.module';
 
 @Module({
@@ -22,6 +23,7 @@ import { MessagesModule } from './messages/messages.module';
     }),
     HealthModule,
     CanvasesModule,
+    MediaModule,
     MessagesModule,
   ],
 })

@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, type OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 import { ApiError } from '../http/api-error';
@@ -12,12 +12,29 @@ export type CanvasView = {
   createdAt: string;
 };
 
+/** Куда бот кладёт ingest, пока юзер не выбрал канвас (DEFAULT_CANVAS_ID). */
+export const DEFAULT_CANVAS_ID = 'canvas_default';
+
 @Injectable()
-export class CanvasesService {
+export class CanvasesService implements OnModuleInit {
   constructor(
     @InjectModel(Canvas.name)
     private readonly canvasModel: Model<Canvas>,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.canvasModel.updateOne(
+      { _id: DEFAULT_CANVAS_ID },
+      {
+        $setOnInsert: {
+          title: 'Тестовый канвас',
+          ownerId: 'system',
+          createdAt: new Date(),
+        },
+      },
+      { upsert: true },
+    );
+  }
 
   async list(ownerId: string): Promise<{ items: CanvasView[] }> {
     const docs = await this.canvasModel

@@ -6,6 +6,7 @@ export interface Environment {
   MONGODB_URI: string;
   PORT: number;
   CORS_ORIGIN: string;
+  PUBLIC_BASE_URL: string;
 }
 
 export function validateEnvironment(
@@ -24,6 +25,7 @@ export function validateEnvironment(
     MONGODB_URI: mongodbUri,
     PORT: port,
     CORS_ORIGIN: corsOrigins.join(','),
+    PUBLIC_BASE_URL: readPublicBaseUrl(environment.PUBLIC_BASE_URL, port),
   };
 }
 
@@ -65,6 +67,27 @@ function readPort(value: unknown): number {
   }
 
   return port;
+}
+
+function readPublicBaseUrl(value: unknown, port: number): string {
+  const raw =
+    typeof value === 'string' && value.trim() !== ''
+      ? value.trim()
+      : `http://localhost:${port}`;
+
+  let url: URL;
+
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('PUBLIC_BASE_URL must be an absolute URL');
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('PUBLIC_BASE_URL must use HTTP or HTTPS');
+  }
+
+  return url.origin;
 }
 
 function normalizeOrigin(origin: string): string {

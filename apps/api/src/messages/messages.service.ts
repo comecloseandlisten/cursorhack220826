@@ -154,6 +154,37 @@ export class MessagesService {
     }
   }
 
+  /**
+   * Резолв сохранённого сообщения по исходнику в мессенджере — бот так
+   * находит parentMessageId для reply. sourceId для лички = authorId.
+   */
+  async findBySource(
+    sourceId: string,
+    sourceMessageId: string,
+  ): Promise<MessageView> {
+    const doc = await this.messageModel
+      .findOne({
+        'source.dedupKey': {
+          $in: [
+            chatDedupKey(sourceId, sourceMessageId),
+            dmDedupKey(sourceId, sourceMessageId),
+          ],
+        },
+      })
+      .lean()
+      .exec();
+
+    if (!doc) {
+      throw new ApiError(
+        HttpStatus.NOT_FOUND,
+        'source_not_found',
+        'Исходное сообщение ещё не собрано в digest.',
+      );
+    }
+
+    return toMessageView(doc, doc.senderId, new Date());
+  }
+
   private async insert(
     parsed: ParsedMessageContent,
     senderId: string,

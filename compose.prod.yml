@@ -32,6 +32,7 @@ services:
       CORS_ORIGIN: https://lorebook.space,https://www.lorebook.space
       MONGO_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD is required}
       BOT_TOKEN: ${BOT_TOKEN:?BOT_TOKEN is required}
+      PUBLIC_BASE_URL: https://lorebook.space
     command:
       - /bin/sh
       - -ec
@@ -81,6 +82,38 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+
+  bot:
+    image: ghcr.io/comecloseandlisten/cursorhack220826/bot:${IMAGE_TAG:?IMAGE_TAG is required}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HEALTH_PORT: "3001"
+      # Пустой токен = бот idle, деплой не валим (токен добавляется в .env дроплета).
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      DIGEST_API_BASE_URL: http://api:3000/api/v1
+      DIGEST_BOT_TOKEN: ${BOT_TOKEN:?BOT_TOKEN is required}
+      DEFAULT_CANVAS_ID: ${DEFAULT_CANVAS_ID:-canvas_default}
+      CHAT_CANVAS_MAP: ${CHAT_CANVAS_MAP:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      # frontend — ради выхода в интернет к Telegram API (backend internal).
+      - frontend
+      - backend
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/').then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
 
   caddy:
     image: caddy:2-alpine

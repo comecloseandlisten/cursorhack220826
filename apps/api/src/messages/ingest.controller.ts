@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Get,
   HttpStatus,
   Post,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -37,5 +39,16 @@ export class IngestController {
       result.created ? HttpStatus.CREATED : HttpStatus.OK,
     );
     return result.message;
+  }
+
+  @Get('source')
+  findBySource(
+    @Query('sourceId') sourceId = '',
+    @Query('sourceMessageId') sourceMessageId = '',
+  ) {
+    return this.messagesService.findBySource(
+      sourceId.trim(),
+      sourceMessageId.trim(),
+    );
   }
 }
