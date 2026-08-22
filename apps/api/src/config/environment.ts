@@ -2,6 +2,7 @@ const DEFAULT_PORT = 3000;
 const DEFAULT_CORS_ORIGIN = 'http://localhost:5173';
 
 export interface Environment {
+  BOT_TOKEN: string;
   MONGODB_URI: string;
   PORT: number;
   CORS_ORIGIN: string;
@@ -12,12 +13,14 @@ export function validateEnvironment(
 ): Record<string, unknown> & Environment {
   const mongodbUri = readMongoUri(environment.MONGODB_URI);
   const port = readPort(environment.PORT);
+  const botToken = readRequiredString(environment.BOT_TOKEN, 'BOT_TOKEN');
   const corsOrigins = parseCorsOrigins(
     environment.CORS_ORIGIN ?? DEFAULT_CORS_ORIGIN,
   );
 
   return {
     ...environment,
+    BOT_TOKEN: botToken,
     MONGODB_URI: mongodbUri,
     PORT: port,
     CORS_ORIGIN: corsOrigins.join(','),
@@ -43,8 +46,12 @@ export function parseCorsOrigins(value: unknown): string[] {
 }
 
 function readMongoUri(value: unknown): string {
+  return readRequiredString(value, 'MONGODB_URI');
+}
+
+function readRequiredString(value: unknown, name: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
-    throw new Error('MONGODB_URI is required');
+    throw new Error(`${name} is required`);
   }
 
   return value.trim();
