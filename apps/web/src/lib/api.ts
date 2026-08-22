@@ -24,14 +24,6 @@ export function pickCanvasId(canvases: CanvasSummary[]): string {
   return canvases[0]?.id ?? DEFAULT_CANVAS_ID;
 }
 
-export function mergeLiveWithMocks(
-  live: MessageView[],
-  mocks: MessageView[],
-): MessageView[] {
-  const liveIds = new Set(live.map((message) => message.id));
-  return [...live, ...mocks.filter((message) => !liveIds.has(message.id))];
-}
-
 export async function loadLiveMessages(): Promise<MessageView[] | null> {
   ensureDemoSession();
 

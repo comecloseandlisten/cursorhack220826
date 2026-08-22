@@ -4,16 +4,14 @@ import { CalendarDock } from "./components/CalendarDock";
 import { CanvasBoard, type CanvasLayout } from "./components/CanvasBoard";
 import { MessageWheel } from "./components/MessageWheel";
 import { useNarration } from "./hooks/useNarration";
-import { DIGEST_POLL_MS, loadLiveMessages, mergeLiveWithMocks } from "./lib/api";
+import { DIGEST_POLL_MS, loadLiveMessages } from "./lib/api";
 import { eachDay, shiftDay } from "./lib/dates";
 import { adaptMessagesToDays } from "./lib/messageAdapter";
 import { mediaEntries, phraseEntries } from "./lib/playlist";
-import { mockMessages, senderNames } from "./mocks/messages";
 import type { DayEntry } from "./types/canvas";
 
 const CALENDAR_FROM = "2026-08-10";
 const TODAY = "2026-08-22";
-const initialDays = adaptMessagesToDays(mockMessages, senderNames);
 
 function initialDay(): string {
   const queryDay = new URLSearchParams(window.location.search).get("day");
@@ -22,7 +20,7 @@ function initialDay(): string {
 
 export function App() {
   const [selected, setSelected] = useState(initialDay);
-  const [days, setDays] = useState(initialDays);
+  const [days, setDays] = useState(() => adaptMessagesToDays([], {}));
   const [layout, setLayout] = useState<CanvasLayout>("pile");
   const [openedMediaId, setOpenedMediaId] = useState<string | null>(null);
   const [wheelOpen, setWheelOpen] = useState(false);
@@ -104,7 +102,7 @@ export function App() {
     async function refresh() {
       const live = await loadLiveMessages();
       if (cancelled || !live) return;
-      setDays(adaptMessagesToDays(mergeLiveWithMocks(live, mockMessages), senderNames));
+      setDays(adaptMessagesToDays(live, {}));
     }
 
     void refresh();
