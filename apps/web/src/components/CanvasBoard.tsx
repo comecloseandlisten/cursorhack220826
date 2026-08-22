@@ -36,6 +36,12 @@ function paletteFor(id: string): CSSProperties {
   return { "--art-one": one, "--art-two": two, "--art-three": three } as CSSProperties;
 }
 
+function showPreviewFrame(video: HTMLVideoElement) {
+  if (video.currentTime > 0) return;
+  if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+  video.currentTime = Math.min(0.1, video.duration / 4);
+}
+
 function MediaArtwork({
   entry,
   eager = false,
@@ -50,10 +56,11 @@ function MediaArtwork({
     <figure className="media-surface relative m-0 overflow-hidden rounded-[10px] bg-white/30">
       {entry.kind === "video" && entry.video ? (
         <video
-          src={entry.video}
+          src={`${entry.video}#t=0.1`}
           muted
           playsInline
-          preload="metadata"
+          preload={eager ? "auto" : "metadata"}
+          onLoadedMetadata={(event) => showPreviewFrame(event.currentTarget)}
           className="pointer-events-none block aspect-[5/4] w-full object-cover"
           aria-label={label}
         />

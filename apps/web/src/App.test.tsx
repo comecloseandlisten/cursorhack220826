@@ -134,12 +134,15 @@ describe("App", () => {
       expect(screen.getByRole("button", { name: "Open photo gallery" })).toBeInTheDocument(),
     );
     await user.click(screen.getByRole("button", { name: "Open photo gallery" }));
-    await user.click(screen.getByRole("button", { name: "Open video from tg:1" }));
-
-    expect(screen.getByRole("dialog", { name: "Video viewer" })).toBeInTheDocument();
     expect(document.querySelector("video")).toHaveAttribute(
       "src",
-      "https://example.com/recipe.mp4",
+      "https://example.com/recipe.mp4#t=0.1",
     );
+
+    await user.click(screen.getByRole("button", { name: "Open video from tg:1" }));
+
+    const viewer = screen.getByRole("dialog", { name: "Video viewer" });
+    expect(viewer).toBeInTheDocument();
+    expect(viewer.querySelector("video")).toHaveAttribute("src", "https://example.com/recipe.mp4");
   });
 });
