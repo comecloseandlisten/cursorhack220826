@@ -1,10 +1,15 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 
 describe("App", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("opens the current day's photo pile", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("offline"))));
     const user = userEvent.setup();
     window.history.replaceState({}, "", "/");
     render(<App />);

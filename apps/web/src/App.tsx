@@ -4,6 +4,7 @@ import { CalendarDock } from "./components/CalendarDock";
 import { CanvasBoard, type CanvasLayout } from "./components/CanvasBoard";
 import { MessageWheel } from "./components/MessageWheel";
 import { useNarration } from "./hooks/useNarration";
+import { DIGEST_POLL_MS, loadLiveMessages, mergeLiveWithMocks } from "./lib/api";
 import { eachDay, shiftDay } from "./lib/dates";
 import { adaptMessagesToDays } from "./lib/messageAdapter";
 import { mediaEntries, phraseEntries } from "./lib/playlist";
@@ -21,6 +22,7 @@ function initialDay(): string {
 
 export function App() {
   const [selected, setSelected] = useState(initialDay);
+  const [days, setDays] = useState(initialDays);
   const [layout, setLayout] = useState<CanvasLayout>("pile");
   const [openedMediaId, setOpenedMediaId] = useState<string | null>(null);
   const [wheelOpen, setWheelOpen] = useState(false);
@@ -28,13 +30,13 @@ export function App() {
   const calendarDays = useMemo(() => eachDay(CALENDAR_FROM, TODAY), []);
   const counts = useMemo(
     () =>
-      Object.fromEntries(initialDays.map((day) => [day.date, day.entries.length])) as Record<
+      Object.fromEntries(days.map((day) => [day.date, day.entries.length])) as Record<
         string,
         number
       >,
-    [],
+    [days],
   );
-  const current = initialDays.find((day) => day.date === selected);
+  const current = days.find((day) => day.date === selected);
   const entries = current?.entries ?? [];
   const media = useMemo(() => mediaEntries(entries), [entries]);
   const phrases = useMemo(() => phraseEntries(entries), [entries]);
@@ -95,6 +97,23 @@ export function App() {
       setWheelOpen(false);
     }
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refresh() {
+      const live = await loadLiveMessages();
+      if (cancelled || !live) return;
+      setDays(adaptMessagesToDays(mergeLiveWithMocks(live, mockMessages), senderNames));
+    }
+
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), DIGEST_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     window.history.replaceState(
