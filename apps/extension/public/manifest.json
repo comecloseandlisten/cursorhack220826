@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Cursor Hack Readiness",
+  "version": "0.0.0",
+  "description": "Confirms the Cursor Hack extension build is ready.",
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Cursor Hack readiness"
+  }
+}

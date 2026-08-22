@@ -1,0 +1,162 @@
+name: CI and Deploy
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ci-deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  quality:
+    name: Quality checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Upload extension build
+        uses: actions/upload-artifact@v4
+        with:
+          name: cursorhack-extension-${{ github.sha }}
+          path: apps/extension/dist
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-images:
+    name: Publish ${{ matrix.service }} image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: quality
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - web
+          - api
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/comecloseandlisten/cursorhack220826/${{ matrix.service }}:${{ github.sha }}
+            ghcr.io/comecloseandlisten/cursorhack220826/${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  deploy:
+    name: Deploy to production
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - quality
+      - publish-images
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
+          DROPLET_KNOWN_HOSTS: ${{ secrets.DROPLET_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DROPLET_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DROPLET_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Copy production Compose file
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DROPLET_USER: ${{ secrets.DROPLET_USER }}
+          DROPLET_HOST: 68.183.181.4
+        run: |
+          set -euo pipefail
+          scp \
+            -i "$HOME/.ssh/deploy_key" \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o StrictHostKeyChecking=yes \
+            compose.prod.yml \
+            "${DROPLET_USER}@${DROPLET_HOST}:${DEPLOY_PATH}/compose.prod.yml"
+
+      - name: Pull and deploy images
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DROPLET_USER: ${{ secrets.DROPLET_USER }}
+          DROPLET_HOST: 68.183.181.4
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USERNAME: ${{ github.actor }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          SSH_OPTIONS=(
+            -i "$HOME/.ssh/deploy_key"
+            -o "UserKnownHostsFile=$HOME/.ssh/known_hosts"
+            -o StrictHostKeyChecking=yes
+          )
+
+          printf '%s' "$GHCR_TOKEN" | ssh "${SSH_OPTIONS[@]}" \
+            "${DROPLET_USER}@${DROPLET_HOST}" \
+            "docker login ghcr.io --username '$GHCR_USERNAME' --password-stdin"
+
+          ssh "${SSH_OPTIONS[@]}" "${DROPLET_USER}@${DROPLET_HOST}" \
+            "cd '$DEPLOY_PATH' \
+              && test -f .env \
+              && IMAGE_TAG='$IMAGE_TAG' docker compose --env-file .env -f compose.prod.yml pull \
+              && IMAGE_TAG='$IMAGE_TAG' docker compose --env-file .env -f compose.prod.yml up -d --remove-orphans \
+              && curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-connrefused http://127.0.0.1/api/health >/dev/null"
+
+      - name: Remove SSH material
+        if: always()
+        run: rm -f "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts"

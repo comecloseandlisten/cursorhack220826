@@ -1,0 +1,92 @@
+name: cursorhack
+
+services:
+  mongo:
+    image: mongo:8.0
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: cursorhack_admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD is required}
+      MONGO_INITDB_DATABASE: cursorhack
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - backend
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh --quiet --username \"$$MONGO_INITDB_ROOT_USERNAME\" --password \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval \"quit(db.adminCommand('ping').ok ? 0 : 2)\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  api:
+    image: ghcr.io/comecloseandlisten/cursorhack220826/api:${IMAGE_TAG:?IMAGE_TAG is required}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      CORS_ORIGIN: http://68.183.181.4
+      MONGO_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD is required}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        encoded_password="$$(node -p 'encodeURIComponent(process.env.MONGO_PASSWORD)')"
+        export MONGODB_URI="mongodb://cursorhack_admin:$${encoded_password}@mongo:27017/cursorhack?authSource=admin"
+        exec node dist/main.js
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - backend
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "--fail",
+          "--silent",
+          "--show-error",
+          "http://127.0.0.1:3000/api/health",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  web:
+    image: ghcr.io/comecloseandlisten/cursorhack220826/web:${IMAGE_TAG:?IMAGE_TAG is required}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - frontend
+      - backend
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--spider",
+          "http://127.0.0.1/healthz",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  mongo_data:
+
+networks:
+  frontend:
+  backend:
+    internal: true

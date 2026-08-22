@@ -1,0 +1,13 @@
+.git
+.github
+.cursor
+.env
+.env.*
+**/.env
+**/.env.*
+**/node_modules
+**/dist
+**/coverage
+**/.turbo
+*.log
+.DS_Store
